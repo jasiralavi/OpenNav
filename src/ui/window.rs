@@ -201,6 +201,11 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let active_rows_for_bind = active_rows.clone();
     let pinned_map_for_bind = pinned_map.clone();
     let icon_map_for_bind = icon_map.clone();
+
+    // Context for GestureClick
+    let browsers_for_click = browsers_rc.clone();
+    let url_entry_weak_click = url_entry.downgrade();
+    let window_weak_click = window.downgrade();
     
     // factory.connect_setup
     factory.connect_setup(move |_, list_item| {
@@ -228,6 +233,52 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         hbox.append(&icon);
         hbox.append(&label);
         hbox.append(&pin_icon);
+
+        // Click Handling
+        let gesture = gtk4::GestureClick::new();
+        let browsers_inner = browsers_for_click.clone();
+        let url_inner = url_entry_weak_click.clone();
+        let win_inner = window_weak_click.clone();
+        
+        gesture.connect_released(move |gesture, _, _, _| {
+             let modifiers = gesture.current_event().map(|e| e.modifier_state()).unwrap_or_else(gtk4::gdk::ModifierType::empty);
+             let keep_open = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+             
+             let widget = gesture.widget().expect("Widget attached");
+             if let Some(hbox) = widget.downcast_ref::<GtkBox>() {
+                 if let Some(last_child) = hbox.last_child() {
+                     if let Some(lbl) = last_child.downcast_ref::<Label>() {
+                         let name = lbl.text();
+                         if !name.is_empty() {
+                             if let Some(browser) = browsers_inner.iter().find(|b| b.name == name.as_str()) {
+                                 let target_url = if let Some(entry) = url_inner.upgrade() {
+                                     entry.text().to_string()
+                                 } else {
+                                     String::new()
+                                 };
+
+                                 // Increment usage
+                                 if let Ok(store) = crate::data::store::Store::new() {
+                                     let _ = store.increment_usage(&browser.id);
+                                 }
+                                 // Launch
+                                 let _ = browser_repository::launch_browser(&browser.id, &target_url);
+
+                                 if let Some(win) = win_inner.upgrade() {
+                                     if !keep_open {
+                                         win.close();
+                                     } else {
+                                         // Re-present to ensure focus stays if needed
+                                         win.present();
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+        });
+        hbox.add_controller(gesture);
         
         list_item.set_child(Some(&hbox));
     });
@@ -249,6 +300,13 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         
         let name = string_object.string();
         let name_str = name.as_str();
+
+        // Update Hidden Label for Gesture
+        if let Some(last_child) = hbox.last_child() {
+            if let Some(lbl) = last_child.downcast_ref::<Label>() {
+                lbl.set_text(name_str);
+            }
+        }
         
         // Update Label
         let query = search_query_for_bind.borrow();
@@ -308,6 +366,8 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         .build();
 
     vbox.append(&scrolled_window);
+
+
     
     // Status Bar
     let status_box = GtkBox::new(Orientation::Horizontal, 10);
@@ -490,10 +550,12 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let url_entry_weak = url_entry.downgrade();
     let selection_model_weak_for_list = selection_model.downgrade();
     let list_key_controller = gtk4::EventControllerKey::new();
-    list_key_controller.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk4::gdk::Key::Left {
+    list_key_controller.connect_key_pressed(move |_, key, _, modifiers| {
+        if key == gtk4::gdk::Key::Left || (key == gtk4::gdk::Key::l && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK)) {
             if let Some(entry) = url_entry_weak.upgrade() {
                 entry.grab_focus();
+                // Select all text when focusing via shortcut
+                entry.select_region(0, -1);
                 return gtk4::glib::Propagation::Stop;
             }
         }

@@ -59,17 +59,43 @@ chmod +x OpenNav-x86_64.AppImage
 
 See [distribution.md](distribution.md) or `flatpak/` folder for instructions on building a local Flatpak.
 
+## How to Use
+
+OpenNav serves two main purposes:
+
+1.  **Browser Picker**: When you click a link in another app (like Discord or Slack), OpenNav pops up, letting you choose which browser to open that specific link in.
+2.  **Quick Launcher**: You can launch OpenNav directly to quickly open any of your installed browsers, optionally typing a URL to go straight there.
+
+### Configuration
+
+#### Set as Default Browser
+To make OpenNav your browser picker, you must set it as your system's **Default Web Browser**:
+-   **GNOME**: Settings -> Default Applications -> Web. Select "OpenNav".
+-   **KDE Plasma**: System Settings -> Applications -> Default Applications -> Web Browser. Select "OpenNav".
+
+#### Quick Launch Shortcut
+To open OpenNav instantly with a keyboard shortcut (e.g., `Super+B` or `Ctrl+Alt+B`):
+1.  Open your desktop environment's **Keyboard Shortcuts** settings.
+2.  Add a new custom shortcut.
+3.  Set the command to: `opennav` (or the path to your AppImage if using that).
+4.  Assign your preferred key combination.
+
 ## Shortcuts
 
 | Key | Action |
 | :--- | :--- |
 | **Type** | Filter list |
-| **Enter** | Launch selected |
+| **Ctrl + L** | Focus URL Bar |
+| **Up / Down** | Navigation |
+| **Enter / Click** | Launch Selected |
 | **Ctrl + Enter** | Launch & Keep Open |
+| **Ctrl + Click** | Launch & Keep Open |
 | **Ctrl + P** | Pin/Unpin Browser |
 | **Ctrl + S** | Open Settings |
 | **Ctrl + ?** | Show Shortcuts |
 | **Esc** | Close / Clear Search |
+
+
 
 ## License
 
