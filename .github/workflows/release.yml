@@ -19,6 +19,33 @@ jobs:
       - name: Build Release
         run: cargo build --release --verbose
 
+      - name: Build AppImage
+        run: |
+          # Install linuxdeploy
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          # Extract to run without FUSE in CI
+          ./linuxdeploy-x86_64.AppImage --appimage-extract
+          
+          # Prepare generic desktop file (remove absolute path)
+          cp opennav.desktop opennav-appimage.desktop
+          sed -i 's|^Exec=.*|Exec=opennav %u|' opennav-appimage.desktop
+          
+          # Generate AppImage
+          # We place resources/ with the binary so linuxdeploy finds the icon? 
+          # Or explicitly pass -i. 
+          # Note: linuxdeploy expects the icon file to be available or resolution fails.
+          
+          ./squashfs-root/AppRun \
+            --appdir AppDir \
+            --executable target/release/opennav \
+            --desktop-file opennav-appimage.desktop \
+            --icon-file resources/opennav.png \
+            --output appimage
+            
+          # Rename output for clarity
+          find . -name "OpenNav*.AppImage" -exec mv {} OpenNav-x86_64.AppImage \;
+
       - name: Create Archive
         run: |
           mkdir -p release/resources
@@ -32,4 +59,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: opennav-linux-x86_64.tar.gz
+          files: |
+            opennav-linux-x86_64.tar.gz
+            OpenNav-x86_64.AppImage
