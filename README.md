@@ -71,4 +71,4 @@ See [distribution.md](distribution.md) or `flatpak/` folder for instructions on 
 
 ## License
 
-MIT
+GNU General Public License v3.0

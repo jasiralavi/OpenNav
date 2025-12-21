@@ -2,6 +2,8 @@
 name = "opennav"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0"
+description = "A keyboard-centric browser selector"
 
 [dependencies]
 gtk4 = { version = "0.9", features = ["v4_12"] } # Targeting recent GTK4
