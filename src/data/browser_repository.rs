@@ -1,4 +1,4 @@
-use gtk4::gio::{AppInfo, DesktopAppInfo};
+use gtk4::gio::AppInfo;
 use gtk4::prelude::*;
 use serde::{Deserialize, Serialize};
 

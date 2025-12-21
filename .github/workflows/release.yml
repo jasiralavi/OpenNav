@@ -33,6 +33,7 @@ jobs:
           # Prepare generic desktop file (remove absolute path)
           cp opennav.desktop opennav-appimage.desktop
           sed -i 's|^Exec=.*|Exec=opennav %u|' opennav-appimage.desktop
+          sed -i 's|^Icon=.*|Icon=opennav|' opennav-appimage.desktop
           
           # Generate AppImage
           # We place resources/ with the binary so linuxdeploy finds the icon? 
