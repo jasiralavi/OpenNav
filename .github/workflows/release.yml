@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev build-essential
+
+      - name: Build Release
+        run: cargo build --release --verbose
+
+      - name: Create Archive
+        run: |
+          mkdir -p release/resources
+          cp target/release/opennav release/
+          cp resources/opennav.png release/resources/
+          cp opennav.desktop release/
+          cd release
+          tar -czvf ../opennav-linux-x86_64.tar.gz *
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: opennav-linux-x86_64.tar.gz
