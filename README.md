@@ -4,7 +4,14 @@
 
 It automatically detects your installed browsers and lets you quickly select which one to open a link with. It learns your preferences over time, sorting your most-used browsers to the top.
 
-![OpenNav Screenshot](resources/opennav.png)
+<div align="center">
+  <img src="resources/opennav.png" width="200" alt="OpenNav Icon" />
+</div>
+
+<div align="center">
+  <img src="resources/screenshot_1.png" width="45%" alt="OpenNav Screenshot 1" />
+  <img src="resources/screenshot_2.png" width="45%" alt="OpenNav Screenshot 2" />
+</div>
 
 ## Features
 
