@@ -7,10 +7,12 @@ It automatically detects your installed browsers and lets you quickly select whi
 <div align="center">
   <img src="resources/opennav.png" width="200" alt="OpenNav Icon" />
 </div>
-
+<br>
 <div align="center">
-  <img src="resources/screenshot_1.png" width="45%" alt="OpenNav Screenshot 1" />
-  <img src="resources/screenshot_2.png" width="45%" alt="OpenNav Screenshot 2" />
+  <img src="resources/screenshot_1.png" width="75%" alt="OpenNav Screenshot 1" />
+</div>
+<div align="center">
+  <img src="resources/screenshot_2.png" width="75%" alt="OpenNav Screenshot 2" />
 </div>
 
 ## Features
@@ -27,7 +29,7 @@ It automatically detects your installed browsers and lets you quickly select whi
 
 ### AppImage (Portable)
 
-Download the `.AppImage` from the [Releases](https://github.com/yourusername/opennav/releases) page.
+Download the `.AppImage` from the [Releases](https://github.com/jasiralavi/opennav/releases) page.
 ```bash
 chmod +x OpenNav-x86_64.AppImage
 ./OpenNav-x86_64.AppImage
@@ -41,9 +43,9 @@ chmod +x OpenNav-x86_64.AppImage
 
 2.  **Build & Run**:
     ```bash
-    git clone https://github.com/yourusername/opennav.git
+    git clone https://github.com/jasiralavi/opennav.git
     cd opennav
-    cargo run --release -- https://google.com
+    cargo run --release -- https://cyfersolutions.com
     ```
 
 3.  **Install Desktop Entry** (Required for icons/integration):
