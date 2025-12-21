@@ -65,6 +65,7 @@ OpenNav serves two main purposes:
 
 1.  **Browser Picker**: When you click a link in another app (like Discord or Slack), OpenNav pops up, letting you choose which browser to open that specific link in.
 2.  **Quick Launcher**: You can launch OpenNav directly to quickly open any of your installed browsers, optionally typing a URL to go straight there.
+3.  **Direct Web Search**: Type a search query (e.g., "rust lang") in the URL bar and select a browser. OpenNav will automatically detect it's a search term and perform a web search using the browser's default search engine (or Google).
 
 ### Configuration
 

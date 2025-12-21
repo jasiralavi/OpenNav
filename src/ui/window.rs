@@ -125,6 +125,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     
     if let Some(u) = url_to_open {
         url_entry.set_text(u);
+        url_entry.set_position(-1);
     }
     
     vbox.append(&url_entry);
@@ -233,6 +234,11 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         hbox.append(&icon);
         hbox.append(&label);
         hbox.append(&pin_icon);
+        
+        // Hidden Label for Data Transfer
+        let hidden_label = Label::new(None);
+        hidden_label.set_visible(false);
+        hbox.append(&hidden_label);
 
         // Click Handling
         let gesture = gtk4::GestureClick::new();
@@ -413,29 +419,36 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             
             let shortcuts = [
                 ("Type", "Search Browsers"),
-                ("Enter", "Launch Selected"),
+                ("Ctrl + L", "Focus URL Bar"),
+                ("Up/Down Arrows", "Navigation"),
+                ("Enter / Click", "Launch Selected"),
                 ("Ctrl + Enter", "Launch & Keep Open"),
+                ("Ctrl + Click", "Launch & Keep Open"),
                 ("Ctrl + P", "Toggle Pin"),
                 ("Ctrl + S", "Settings"),
                 ("Ctrl + ?", "Shortcuts (Help)"),
-                ("Arrows", "Navigation"),
                 ("Esc", "Close / Clear Search"),
             ];
             
-            for (key, desc) in shortcuts {
-                let row = GtkBox::new(Orientation::Horizontal, 10);
+            let grid = gtk4::Grid::builder()
+                .column_spacing(20)
+                .row_spacing(10)
+                .margin_start(10)
+                .margin_end(10)
+                .build();
+
+            for (i, (key, desc)) in shortcuts.iter().enumerate() {
                 let key_label = Label::new(None);
                 key_label.set_markup(&format!("<b>{}</b>", key));
                 key_label.set_halign(Align::Start);
-                key_label.set_size_request(100, -1);
                 
                 let desc_label = Label::new(Some(desc));
                 desc_label.set_halign(Align::Start);
                 
-                row.append(&key_label);
-                row.append(&desc_label);
-                vbox.append(&row);
+                grid.attach(&key_label, 0, i as i32, 1, 1);
+                grid.attach(&desc_label, 1, i as i32, 1, 1);
             }
+            vbox.append(&grid);
             
             // Close btn
             let close_btn = gtk4::Button::with_label("Close");
@@ -551,14 +564,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let selection_model_weak_for_list = selection_model.downgrade();
     let list_key_controller = gtk4::EventControllerKey::new();
     list_key_controller.connect_key_pressed(move |_, key, _, modifiers| {
-        if key == gtk4::gdk::Key::Left || (key == gtk4::gdk::Key::l && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK)) {
-            if let Some(entry) = url_entry_weak.upgrade() {
-                entry.grab_focus();
-                // Select all text when focusing via shortcut
-                entry.select_region(0, -1);
-                return gtk4::glib::Propagation::Stop;
-            }
-        }
+
         if key == gtk4::gdk::Key::Up {
              if let Some(sel) = selection_model_weak_for_list.upgrade() {
                  if sel.selected() == 0 {
@@ -644,6 +650,16 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                 }
                 
                 window.close();
+                window.close();
+                return gtk4::glib::Propagation::Stop;
+            }
+
+            // Ctrl + L (Focus URL Bar)
+            if key == gtk4::gdk::Key::l && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
+                if let Some(entry) = url_entry_weak_2.upgrade() {
+                    entry.grab_focus();
+                    entry.select_region(0, -1);
+                }
                 return gtk4::glib::Propagation::Stop;
             }
             

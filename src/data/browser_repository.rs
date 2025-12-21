@@ -70,10 +70,62 @@ pub fn get_installed_browsers() -> Vec<Browser> {
 }
 
 pub fn launch_browser(browser_id: &str, url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Trim input
+    let url = url.trim();
+
     if let Some(app) = gtk4::gio::DesktopAppInfo::new(browser_id) {
+        // CASE 1: Empty URL -> just launch the app
+        if url.is_empty() {
+            let launch_context = gtk4::gio::AppLaunchContext::new();
+            app.launch(&[], Some(&launch_context))?;
+            return Ok(());
+        }
+
+        // CASE 2: Non-empty URL -> Try raw command line to support "default search" and proper CLI behavior
+        if let Some(cmd_line) = app.commandline() {
+            let cmd_str = cmd_line.to_string_lossy().into_owned();
+            // Split using shlex to handle quotes correctly
+            if let Some(mut args) = shlex::split(&cmd_str) {
+                // Filter out %u, %U, %f, %F parameters
+                args.retain(|arg| !arg.starts_with('%'));
+
+                if let Some(binary) = args.first() {
+                    let mut command = std::process::Command::new(binary);
+                    // Add remaining args (e.g. "run", "org.mozilla.firefox" for flatpaks)
+                    for arg in args.iter().skip(1) {
+                        command.arg(arg);
+                    }
+                    
+                    // Smart Argument Handling
+                    // 1. If it has a protocol (://), it's a URL.
+                    // 2. If it has dots NO spaces (example.com), treat as domain -> prepend https://
+                    // 3. Otherwise (spaces, no dots), treat as SEARCH -> https://google.com/search?q=...
+                    
+                    let final_arg = if url.contains("://") {
+                        url.to_string()
+                    } else if url.contains(' ') || !url.contains('.') {
+                        // Treat as Search
+                        // TODO: Ideally configurable, defaulting to Google
+                        let query = url.replace(" ", "+");
+                        format!("https://www.google.com/search?q={}", query)
+                    } else {
+                        // Treat as Domain (e.g. "example.com", "localhost:3000")
+                        format!("https://{}", url)
+                    };
+
+                    // Append user input
+                    command.arg(final_arg);
+                    
+                    // Detach process
+                    let _ = command.spawn().map_err(|e| format!("Failed to spawn command: {}", e))?;
+                    return Ok(());
+                }
+            }
+        }
+        
+        // Fallback: Use launch_uris if raw command extraction fails (should rarely happen)
+        // Note: launch_uris requires valid generic URIs, so "search query" might fail here.
         let launch_context = gtk4::gio::AppLaunchContext::new();
-        // The list of files is empty because we are opening a URI, which is handled via URIs list usually
-        // But AppInfo::launch_uris looks appropriate.
         let uris = vec![url];
         app.launch_uris(&uris, Some(&launch_context))?;
         Ok(())
