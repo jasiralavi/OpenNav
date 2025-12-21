@@ -18,6 +18,14 @@ It automatically detects your installed browsers and lets you quickly select whi
 
 ## Installation
 
+### AppImage (Portable)
+
+Download the `.AppImage` from the [Releases](https://github.com/yourusername/opennav/releases) page.
+```bash
+chmod +x OpenNav-x86_64.AppImage
+./OpenNav-x86_64.AppImage
+```
+
 ### From Source (Rust)
 
 1.  **Dependencies**:
