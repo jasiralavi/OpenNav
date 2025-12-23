@@ -67,31 +67,4 @@ jobs:
             opennav-linux-x86_64.tar.gz
             OpenNav-x86_64.AppImage
 
-  flatpak:
-    name: "Flatpak"
-    runs-on: ubuntu-latest
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-45
-      options: --privileged
-    steps:
-      - uses: actions/checkout@v3
-      
-      # We need to install rust in the container or rely on the SDK? 
-      # The Manifest uses org.gnome.Sdk which has Rust? No, usually separate extension or installed in sdk.
-      # Gnome SDK 45 has rust.
-      
-      - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          bundle: com.opennav.app.flatpak
-          manifest-path: flatpak/com.opennav.app.yml
-          cache-key: flatpak-builder-${{ github.sha }}
-          # Determine if we need to allow network. 
-          # The action sets up the environment. The manifest controls the build.
-          # We'll try standard build.
-          
-      - name: Create Release (for Flatpak)
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: com.opennav.app.flatpak
+

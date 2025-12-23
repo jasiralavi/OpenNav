@@ -12,7 +12,7 @@
     - **Recently Used**: Sort by most recently launched.
     - **Frequently Used**: Sort by usage count.
 - **Reset Stats**: Added context-sensitive "Reset" buttons in Settings to clear usage statistics for "Recently Used" and "Frequently Used" sorting modes.
-- **AppImage & Flatpak Support**: Added build configurations for generating AppImage and Flatpak bundles.
+- **AppImage Support**: Added build configuration for generating AppImage bundle.
 
 ### Changed
 - **UI Polish**:
