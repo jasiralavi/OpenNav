@@ -58,7 +58,7 @@ jobs:
           cp resources/opennav.png release/
           cp -r resources release/
           cd release
-          tar -czvf ../opennav-linux-x86_64.tar.gz .
+          tar -czvf ../opennav-linux-x86_64.tar.gz *
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -67,5 +67,3 @@ jobs:
           files: |
             opennav-linux-x86_64.tar.gz
             OpenNav-x86_64.AppImage
-
-

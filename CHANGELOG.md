@@ -1,6 +1,10 @@
 # Changelog
 
-## [1.2.2] - 2025-12-23
+## [1.2.3] - 2025-12-23
+### Fixed
+- **Release Automation**: Restored proven release workflow logic and integrated full resource bundle.
+
+## [1.2.2] - 2025-12-23(Failed)
 ### Fixed
 - **Release Automation**: Fixed `cp` command syntax error in release workflow causing CI failure.
 
