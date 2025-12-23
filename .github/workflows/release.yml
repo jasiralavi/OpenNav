@@ -52,13 +52,13 @@ jobs:
 
       - name: Create Archive
         run: |
-          mkdir -p release
+          rm -rf release
+          mkdir -p release/resources
           cp target/release/opennav release/
           cp opennav.desktop release/
           cp resources/opennav.png release/
-          cp -r resources release/
-          cd release
-          tar -czvf ../opennav-linux-x86_64.tar.gz .
+          cp -r resources/* release/resources/
+          tar -czvf opennav-linux-x86_64.tar.gz -C release .
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
