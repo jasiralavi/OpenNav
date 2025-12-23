@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1] - 2025-12-23
+### Fixed
+- **Release Automation**: Fixed issues with release workflow and ensured full resource bundle is included in the release artifacts.
+
 ## [1.2.0] - 2025-12-23
 
 ### Added
