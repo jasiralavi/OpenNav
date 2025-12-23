@@ -49,9 +49,14 @@ fn refresh_rows(
                     let is_pinned = *pinned_map.get(current_text.as_str()).unwrap_or(&false);
                     update_label_markup(label, current_text.as_str(), query, false); // false = no prefix
                     
-                    // Pin Icon
-                    if let Some(child2) = label.next_sibling() {
-                         child2.set_visible(is_pinned);
+                    // Pin Button
+                    if let Some(pin_btn) = label.next_sibling().and_downcast::<gtk4::Button>() {
+                         if is_pinned {
+                             pin_btn.add_css_class("pinned");
+                         } else {
+                             pin_btn.remove_css_class("pinned");
+                         }
+                         pin_btn.set_visible(true);
                     }
                 }
             }
@@ -66,8 +71,54 @@ fn refresh_rows(
 pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     // Load CSS
     let provider = gtk4::CssProvider::new();
-    provider.load_from_path("resources/style.css");
+    // Embed CSS at compile time to ensure it is always available
+    let css_data = include_str!("../../resources/style.css");
+    provider.load_from_data(css_data);
     
+    // Resolve resource path
+    let mut resource_path = std::path::PathBuf::from("resources");
+    if !resource_path.exists() {
+        println!("DEBUG: 'resources' in CWD not found. Checking candidates...");
+        // Check relative to executable (AppImage/Install)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let candidates = [
+                    parent.join("resources"),                        // AppImage / Side-by-side
+                    parent.join("../../resources"),                  // Cargo target/release/
+                    parent.join("../../../resources"),               // Deep nesting?
+                    parent.parent().unwrap_or(parent).join("share/opennav/resources"), // Linux Install
+                ];
+                
+                let mut found = false;
+                for cand in &candidates {
+                    println!("DEBUG: Checking candidate: {:?}", cand);
+                    if cand.exists() {
+                        println!("DEBUG: Found resources at: {:?}", cand);
+                        resource_path = cand.clone();
+                        found = true;
+                        break;
+                    }
+                    // Try canonicalizing in case '..' needs resolution
+                    if let Ok(canon) = cand.canonicalize() {
+                         println!("DEBUG: Checking canonical: {:?}", canon);
+                         if canon.exists() {
+                             println!("DEBUG: Found resources at: {:?}", canon);
+                             resource_path = canon;
+                             found = true;
+                             break;
+                         }
+                    }
+                }
+                
+                if !found {
+                    println!("DEBUG: Warning: Could not locate resources directory.");
+                }
+            }
+        }
+    } else {
+        println!("DEBUG: Found 'resources' in CWD.");
+    }
+
     if let Some(display) = gdk::Display::default() {
          gtk4::style_context_add_provider_for_display(
              &display,
@@ -77,12 +128,19 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
          
          // Add resources to icon theme search path
          let icon_theme = gtk4::IconTheme::for_display(&display);
-         icon_theme.add_search_path("resources");
+         if resource_path.exists() {
+             if let Some(path_str) = resource_path.to_str() {
+                 icon_theme.add_search_path(path_str);
+             }
+         }
     }
     
     // Set default icon for the process (fallback for some WMs)
     // gtk4::Window::set_default_icon_name("opennav"); // This is a static method in older gtk? No, doesn't exist in gtk4::Window.
     // We rely on window instance icon name.
+
+    // Start background tasks
+    crate::data::icons::fetch_missing_icons();
 
     let window = ApplicationWindow::builder()
         .application(app)
@@ -116,7 +174,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
 
     // URL Entry Area (was Search Bar)
     let url_entry = gtk4::Entry::builder()
-        .placeholder_text("URL to open...")
+        .placeholder_text("Open URL or Search...")
         .margin_top(15)
         .margin_bottom(15)
         .margin_start(15)
@@ -130,19 +188,174 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     
     vbox.append(&url_entry);
 
+    // Sort by usage and pin status
+    let store = Store::new().ok();
+    
+    // Cache engines for icon lookup
+    let engines_cache = std::rc::Rc::new(std::cell::RefCell::new(Vec::<crate::data::store::SearchEngine>::new()));
+    let default_engine_keyword = std::rc::Rc::new(std::cell::RefCell::new("g".to_string()));
+    
+    if let Some(ref s) = store {
+        if let Ok(list) = s.list_engines() {
+            *engines_cache.borrow_mut() = list;
+        }
+        if let Ok(Some(k)) = s.get_setting("search_engine") {
+            // Check if it's a legacy name or keyword
+             let keyword = match k.as_str() {
+                 "Google" => "g",
+                 "DuckDuckGo" => "d",
+                 "Bing" => "b",
+                 "Brave" => "br",
+                 "Ecosia" => "e",
+                 k => k,
+             };
+            *default_engine_keyword.borrow_mut() = keyword.to_string();
+        }
+    }
+    
+    // URL Icon Logic
+    {
+        let engines = engines_cache.clone();
+        let def_kw = default_engine_keyword.clone();
+        let entry_for_icon = url_entry.clone();
+        let res_path = resource_path.clone();
+        
+        let update_icon = move || {
+            let text = entry_for_icon.text();
+            let text = text.as_str().trim();
+            
+            // Helper for Globe Icon
+            let set_globe_icon = |entry: &gtk4::Entry| {
+                // 1. Try custom globe.png
+                let custom_globe = res_path.join("globe.png");
+                if custom_globe.exists() {
+                     let file = gtk4::gio::File::for_path(custom_globe);
+                     if let Ok(texture) = gtk4::gdk::Texture::from_file(&file) {
+                         entry.set_icon_from_paintable(gtk4::EntryIconPosition::Primary, Some(&texture));
+                         return;
+                     }
+                }
+
+                // 2. Fallback to Theme
+                let display = gtk4::gdk::Display::default().expect("No display");
+                let theme = gtk4::IconTheme::for_display(&display);
+                
+                if theme.has_icon("globe-symbolic") {
+                    entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("globe-symbolic"));
+                } else if theme.has_icon("applications-internet") {
+                    entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("applications-internet"));
+                } else {
+                    entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("network-server-symbolic"));
+                }
+            };
+            
+            // 1. Globe for Empty
+            if text.is_empty() {
+                set_globe_icon(&entry_for_icon);
+                return;
+            }
+            
+            // 2. Identify Type
+            let is_url = text.contains("://") || (!text.contains(' ') && text.contains('.'));
+            
+            if !is_url {
+                // It is a Search
+                let parts: Vec<&str> = text.splitn(2, ' ').collect();
+                
+                // Determine effective keyword
+                let effective_keyword = if parts.len() > 1 {
+                    let potential = parts[0];
+                    if engines.borrow().iter().any(|e| e.keyword == potential) {
+                         potential.to_string()
+                    } else {
+                         def_kw.borrow().clone()
+                    }
+                } else {
+                     def_kw.borrow().clone()
+                };
+                
+                // Lookup Engine for this keyword
+                let mut icon_name = "system-search-symbolic".to_string();
+                
+                if let Some(engine) = engines.borrow().iter().find(|e| e.keyword == effective_keyword) {
+                    if let Some(path) = &engine.icon_path {
+                        if path.contains("/") || path.contains("\\") {
+                             // It's a file path (custom icon)
+                             if std::path::Path::new(path).exists() {
+                                 let file = gtk4::gio::File::for_path(path);
+                                 if let Ok(texture) = gtk4::gdk::Texture::from_file(&file) {
+                                     entry_for_icon.set_icon_from_paintable(gtk4::EntryIconPosition::Primary, Some(&texture));
+                                     return;
+                                 }
+                             }
+                             // If loading failed, fall through to fallback
+                        } else {
+                            // It's an icon name (theme)
+                            icon_name = path.clone();
+                        }
+                    } else {
+                         // Fallback mappings
+                         icon_name = match engine.keyword.as_str() {
+                             "g" => "google-chrome".to_string(), 
+                             "d" => "duckduckgo".to_string(), 
+                             "yt" => "youtube".to_string(),
+                             "gh" => "github".to_string(),
+                             "b" => "bing".to_string(),
+                             "br" => "brave".to_string(),
+                             "e" => "ecosia".to_string(), 
+                             _ => "system-search-symbolic".to_string(),
+                         };
+                    }
+                }
+                
+                // Verify Icon Existence
+                let display = gtk4::gdk::Display::default().expect("No display");
+                let theme = gtk4::IconTheme::for_display(&display);
+                
+                if theme.has_icon(&icon_name) {
+                    entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some(&icon_name));
+                } else {
+                     // Try alternatives
+                     if icon_name == "google-chrome" && theme.has_icon("google") {
+                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("google"));
+                     } else if icon_name == "duckduckgo" && theme.has_icon("preferences-web-browser") {
+                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("preferences-web-browser"));
+                     } else {
+                          // Final Fallback (Search Glass)
+                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("system-search-symbolic"));
+                     }
+                }
+
+            } else {
+                // Is URL -> Globe
+                set_globe_icon(&entry_for_icon);
+            }
+        };
+        
+        // Initial call
+        update_icon();
+        
+        // Connect signal
+        let update_clone = update_icon.clone();
+        url_entry.connect_changed(move |_| {
+            update_clone();
+        });
+    }
+
     // Browser List Logic
     let mut browsers = browser_repository::get_installed_browsers();
     
-    // Sort by usage and pin status
-    let store = Store::new().ok();
     if let Some(ref s) = store {
         if let Ok(stats) = s.get_stats() {
              use std::collections::HashMap;
-             let usage_map: HashMap<String, (i64, bool)> = stats.into_iter().map(|(id, count, pinned, _)| (id, (count, pinned))).collect();
+             // id -> (usage, pinned, last_used)
+             let stat_map: HashMap<String, (i64, bool, i64)> = stats.into_iter().map(|(id, count, pinned, last)| (id, (count, pinned, last))).collect();
+             
+             let sort_mode = s.get_setting("sort_order").ok().flatten().unwrap_or("freq".to_string());
              
              // First pass: update is_pinned in struct
              for browser in &mut browsers {
-                 if let Some((_, pinned)) = usage_map.get(&browser.id) {
+                 if let Some((_, pinned, _)) = stat_map.get(&browser.id) {
                      browser.is_pinned = *pinned;
                  }
              }
@@ -151,12 +364,23 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                  // Pin status first (true > false)
                  b.is_pinned.cmp(&a.is_pinned)
                      .then_with(|| {
-                         // Then usage
-                         let count_a = usage_map.get(&a.id).map(|x| x.0).unwrap_or(0);
-                         let count_b = usage_map.get(&b.id).map(|x| x.0).unwrap_or(0);
-                         count_b.cmp(&count_a)
+                         match sort_mode.as_str() {
+                             "recent" => {
+                                 let last_a = stat_map.get(&a.id).map(|x| x.2).unwrap_or(0);
+                                 let last_b = stat_map.get(&b.id).map(|x| x.2).unwrap_or(0);
+                                 last_b.cmp(&last_a) // Newest first
+                             },
+                             "alpha" => {
+                                 std::cmp::Ordering::Equal // Defer to name sort at end
+                             },
+                             _ => { // "freq" or default
+                                 let count_a = stat_map.get(&a.id).map(|x| x.0).unwrap_or(0);
+                                 let count_b = stat_map.get(&b.id).map(|x| x.0).unwrap_or(0);
+                                 count_b.cmp(&count_a) // Highest first
+                             }
+                         }
                      })
-                     .then_with(|| a.name.cmp(&b.name))
+                     .then_with(|| a.name.cmp(&b.name)) // Tie breaker Name ASC
              });
         }
     }
@@ -208,6 +432,12 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let url_entry_weak_click = url_entry.downgrade();
     let window_weak_click = window.downgrade();
     
+    // Clones for Setup (Pin Button)
+    let browsers_setup = browsers_rc.clone();
+    let pinned_map_setup = pinned_map.clone();
+    let active_rows_setup = active_rows.clone();
+    let search_query_setup = search_query.clone();
+    
     // factory.connect_setup
     factory.connect_setup(move |_, list_item| {
         let list_item = list_item.downcast_ref::<gtk4::ListItem>().unwrap();
@@ -224,23 +454,59 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         label.set_hexpand(true);
         label.set_use_markup(true);
         
-        // Pin Icon
-        let pin_icon = gtk4::Image::builder()
-            .icon_name("view-pin-symbolic") // Should adapt to theme (white in dark)
-            .pixel_size(16)
-            .visible(false)
+        // Pin Button (Button instead of Image)
+        let pin_btn = gtk4::Button::builder()
+            .icon_name("view-pin-symbolic")
+            .css_classes(vec!["pin-btn".to_string()])
+            .halign(Align::End)
+            .valign(Align::Center)
             .build();
+            
+        // Handler for Pin Click
+        let browsers_pin = browsers_setup.clone();
+        let pinned_map_pin = pinned_map_setup.clone();
+        let active_rows_pin = active_rows_setup.clone(); 
+        let search_query_pin = search_query_setup.clone();
+        
+        pin_btn.connect_clicked(move |btn| {
+             // Avoid row activation by stopping propagation? Button does this naturally.
+             // Find browser name
+             if let Some(row) = btn.ancestor(gtk4::ListBoxRow::static_type()).or_else(|| btn.parent().and_then(|p| p.parent())) { // Used inside ListView, parent is HBox, then ListItem
+                  // Getting usage of ListItem is tricky to resolve data directly.
+                  // We can look at the hidden label we added!
+                  if let Some(hbox) = btn.parent().and_then(|p| p.downcast::<GtkBox>().ok()) {
+                       if let Some(last) = hbox.last_child() {
+                           if let Some(lbl) = last.downcast_ref::<Label>() {
+                               let name = lbl.text();
+                               if !name.is_empty() {
+                                   if let Some(browser) = browsers_pin.iter().find(|b| b.name == name.as_str()) {
+                                        if let Ok(store) = Store::new() {
+                                            if let Ok(new_state) = store.toggle_pin(&browser.id) {
+                                                pinned_map_pin.borrow_mut().insert(browser.name.clone(), new_state);
+                                                
+                                                // Refresh Rows
+                                                let query = search_query_pin.borrow();
+                                                refresh_rows(&active_rows_pin, &query, &pinned_map_pin.borrow());
+                                            }
+                                        }
+                                   }
+                               }
+                           }
+                       }
+                  }
+             }
+        });
         
         hbox.append(&icon);
         hbox.append(&label);
-        hbox.append(&pin_icon);
+        hbox.append(&pin_btn);
         
         // Hidden Label for Data Transfer
         let hidden_label = Label::new(None);
         hidden_label.set_visible(false);
         hbox.append(&hidden_label);
 
-        // Click Handling
+        // Click Handling (Row Launch)
         let gesture = gtk4::GestureClick::new();
         let browsers_inner = browsers_for_click.clone();
         let url_inner = url_entry_weak_click.clone();
@@ -251,6 +517,9 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
              let keep_open = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
              
              let widget = gesture.widget().expect("Widget attached");
+             // If click was on the button, this gesture might catch it if propagation bubbles?
+             // Button claims the sequence usually.
+             
              if let Some(hbox) = widget.downcast_ref::<GtkBox>() {
                  if let Some(last_child) = hbox.last_child() {
                      if let Some(lbl) = last_child.downcast_ref::<Label>() {
@@ -322,8 +591,9 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         let is_pinned = *p_map.get(name_str).unwrap_or(&false);
         let icon_name = i_map.get(name_str).cloned().unwrap_or_else(|| "web-browser".to_string());
         
-        // 0: Icon, 1: Label, 2: Pin
+        // 0: Icon, 1: Label, 2: Pin Button
         if let Some(child0) = hbox.first_child() {
+             // Icon Logic
              if let Some(icon) = child0.downcast_ref::<gtk4::Image>() {
                  let icon_path_str = if icon_name.starts_with("file://") {
                      &icon_name[7..]
@@ -352,8 +622,14 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                  if let Some(label) = child1.downcast_ref::<Label>() {
                      update_label_markup(&label, name_str, &query, is_pinned); 
                      
-                     if let Some(child2) = child1.next_sibling() {
-                         child2.set_visible(is_pinned);
+                     if let Some(pin_btn) = child1.next_sibling().and_downcast::<gtk4::Button>() {
+                         // Pin Button Logic
+                         if is_pinned {
+                             pin_btn.add_css_class("pinned");
+                         } else {
+                             pin_btn.remove_css_class("pinned");
+                         }
+                         pin_btn.set_visible(true); // Always visible, CSS handles opacity
                      }
                  }
              }
@@ -473,14 +749,15 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         .build();
     
     let window_weak_for_settings = window.downgrade();
+    let resource_path_for_settings = resource_path.clone();
     settings_btn.connect_clicked(move |_| {
         if let Some(parent) = window_weak_for_settings.upgrade() {
             let dialog = gtk4::Window::builder()
                 .transient_for(&parent)
                 .modal(true)
                 .title("Settings")
-                .default_width(320)
-                .default_height(240)
+                .default_width(600)
+                .default_height(550)
                 .build();
 
             // Add Esc handler for dialog
@@ -502,38 +779,114 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             vbox.set_margin_end(20);
             
             // App Logo
-            let logo = gtk4::Image::from_file("resources/app-icon.png");
+            let logo_path = resource_path_for_settings.join("app-icon.png");
+            let logo = if logo_path.exists() {
+                gtk4::Image::from_file(&logo_path)
+            } else {
+                gtk4::Image::from_file("resources/app-icon.png") // Fallback
+            };
             logo.set_pixel_size(64);
             vbox.append(&logo);
             
             // About Section
-            let about_label = Label::new(Some("OpenNav v0.1.0\n<span size='small'>A fast browser picker and launcher.</span>"));
+            let about_label = Label::new(Some("OpenNav v1.1.0\n<span size='small'>A fast browser picker and launcher.</span>"));
             about_label.set_use_markup(true);
             about_label.set_justify(gtk4::Justification::Center);
             vbox.append(&about_label);
             
-            // Actions
-            let clear_stats_btn = gtk4::Button::with_label("Reset Usage Stats");
-            let parent_weak = parent.downgrade();
-            let dialog_weak = dialog.downgrade();
+            // Separator
+            vbox.append(&gtk4::Separator::new(Orientation::Horizontal));
+
+            // Browser Sort Options
+            let sort_box = GtkBox::new(Orientation::Vertical, 10);
+            let sort_label = Label::new(Some("<b>Browser List Order</b>"));
+            sort_label.set_use_markup(true);
+            sort_label.set_halign(Align::Start);
+            sort_box.append(&sort_label);
             
-            clear_stats_btn.connect_clicked(move |_| {
-                 if let Ok(store) = Store::new() {
-                     if let Ok(_) = store.clear_stats() {
-                         if let Some(_p) = parent_weak.upgrade() {
-                             // Use a proper dialog or just print/label?
-                             // Let's change label text temporarily or close
-                         }
-                         println!("Stats cleared.");
-                     }
-                 }
-                 if let Some(d) = dialog_weak.upgrade() {
-                     d.close();
-                 }
+            let row_sort = GtkBox::new(Orientation::Horizontal, 10);
+            
+            // Dropdown
+            let sort_items = ["Alphabetical", "Recently Used", "Frequently Used"];
+            let model = StringList::new(&sort_items);
+            let dropdown = gtk4::DropDown::new(Some(model), None::<&gtk4::Expression>);
+            dropdown.set_hexpand(true);
+            
+            // Determine initial selection
+            let current_sort = if let Ok(store) = Store::new() {
+                 store.get_setting("sort_order").ok().flatten().unwrap_or("freq".to_string())
+            } else {
+                 "freq".to_string()
+            };
+            
+            let initial_idx = match current_sort.as_str() {
+                "alpha" => 0,
+                "recent" => 1,
+                _ => 2, // freq
+            };
+            dropdown.set_selected(initial_idx);
+            
+            row_sort.append(&dropdown);
+            
+            // Reset Button
+            let reset_btn = gtk4::Button::with_label("Reset");
+            reset_btn.add_css_class("suggested-action");
+            reset_btn.set_width_request(100);
+            // Initial state
+            reset_btn.set_sensitive(initial_idx != 0);
+            
+            // Logic for Dropdown Change
+            let reset_btn_clone = reset_btn.clone();
+            dropdown.connect_selected_notify(move |d| {
+                let idx = d.selected();
+                let key = match idx {
+                    0 => "alpha",
+                    1 => "recent",
+                    _ => "freq",
+                };
+                
+                // Save setting
+                if let Ok(store) = Store::new() {
+                    let _ = store.set_setting("sort_order", key);
+                }
+                
+                // Update Reset Button
+                reset_btn_clone.set_sensitive(idx != 0);
             });
-            vbox.append(&clear_stats_btn);
+            
+            // Logic for Reset Click
+            let dropdown_clone = dropdown.clone();
+            reset_btn.connect_clicked(move |_| {
+                let idx = dropdown_clone.selected();
+                if let Ok(store) = Store::new() {
+                     match idx {
+                         1 => { let _ = store.reset_recent_stats(); },
+                         2 => { let _ = store.reset_frequent_stats(); },
+                         _ => {}
+                     }
+                }
+            });
+            
+            row_sort.append(&reset_btn);
+            sort_box.append(&row_sort);
+            
+            vbox.append(&sort_box);
+            
+            // Separator
+            vbox.append(&gtk4::Separator::new(Orientation::Horizontal));
+       
+            // Embed Search Engine Management UI
+            let engines_ui = crate::ui::engines_dialog::build_engine_management_ui();
+            engines_ui.set_vexpand(true);
+            vbox.append(&engines_ui);
+
+            // Separator
+            vbox.append(&gtk4::Separator::new(Orientation::Horizontal));
             
             let close_btn = gtk4::Button::with_label("Close");
+            close_btn.add_css_class("suggested-action");
+            close_btn.set_width_request(100);
+            
             let dialog_weak_2 = dialog.downgrade();
             close_btn.connect_clicked(move |_| {
                 if let Some(d) = dialog_weak_2.upgrade() {
@@ -591,13 +944,42 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let active_rows_clone = active_rows.clone();
     let pinned_map_clone = pinned_map.clone();
     let filter_weak = filter.downgrade();
+    let list_view_weak = list_view.downgrade();
     
     // Buttons for shortcuts
     let help_btn_weak = help_btn.downgrade();
     let settings_btn_weak = settings_btn.downgrade();
 
     key_controller.connect_key_pressed(move |_controller, key, _keycode, modifiers| {
+        // Handle Esc globally (Highest priority)
+        if key == gtk4::gdk::Key::Escape {
+            if let Some(window) = window_weak.upgrade() {
+                let should_stop = {
+                    let mut query = search_query_clone.borrow_mut();
+                    if !query.is_empty() {
+                        query.clear();
+                        true
+                    } else {
+                        false
+                    }
+                };
+
+                if should_stop {
+                    if let Some(f) = filter_weak.upgrade() {
+                        f.set_search(None::<&str>);
+                        // Refresh labels to clear markup
+                        refresh_rows(&active_rows_clone, "", &pinned_map_clone.borrow());
+                    }
+                    return gtk4::glib::Propagation::Stop;
+                }
+                
+                window.close();
+                return gtk4::glib::Propagation::Stop;
+            }
+        }
+
         // Check focus to avoid eating URL entry inputs
+
         // "has_focus()" on Entry might return false if internal Text widget has focus
         // We must check if the focused widget is the entry or a child of it.
         if let Some(window) = window_weak.upgrade() {
@@ -629,30 +1011,8 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
         
         // Handle Shortcuts
         if let Some(window) = window_weak.upgrade() {
-            if key == gtk4::gdk::Key::Escape {
-                let should_stop = {
-                    let mut query = search_query_clone.borrow_mut();
-                    if !query.is_empty() {
-                        query.clear();
-                        true
-                    } else {
-                        false
-                    }
-                };
+            // Esc handled at top
 
-                if should_stop {
-                    if let Some(f) = filter_weak.upgrade() {
-                        f.set_search(None::<&str>);
-                        // Refresh labels to clear markup
-                        refresh_rows(&active_rows_clone, "", &pinned_map_clone.borrow());
-                    }
-                    return gtk4::glib::Propagation::Stop;
-                }
-                
-                window.close();
-                window.close();
-                return gtk4::glib::Propagation::Stop;
-            }
 
             // Ctrl + L (Focus URL Bar)
             if key == gtk4::gdk::Key::l && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
@@ -725,6 +1085,9 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                         f.set_search(s);
                         refresh_rows(&active_rows_clone, &q, &pinned_map_clone.borrow());
                     }
+                    if let Some(lv) = list_view_weak.upgrade() {
+                        lv.grab_focus();
+                    }
                 }
                 // Always consume Backspace to prevent default behavior (which might be closing window or navigating back)
                 return gtk4::glib::Propagation::Stop;
@@ -784,9 +1147,16 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                  f.set_search(Some(query_str.as_str()));
                  refresh_rows(&active_rows_clone, &query_str, &pinned_map_clone.borrow());
             }
+            
+            // Fix: Grab focus on ListView to prevent it drifting to buttons (e.g. Shortcuts)
+            if let Some(lv) = list_view_weak.upgrade() {
+                lv.grab_focus();
+            }
+            
+            // Also focus back in Backspace logic?
             return gtk4::glib::Propagation::Stop;
         }
-
+        
         gtk4::glib::Propagation::Proceed
     });
     window.add_controller(key_controller);
