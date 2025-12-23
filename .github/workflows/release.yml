@@ -52,10 +52,11 @@ jobs:
 
       - name: Create Archive
         run: |
-          mkdir -p release/resources
+          mkdir -p release
           cp target/release/opennav release/
-          cp resources/opennav.png release/resources/
           cp opennav.desktop release/
+          cp resources/opennav.png release/
+          cp -r resources/ release/resources/
           cd release
           tar -czvf ../opennav-linux-x86_64.tar.gz *
 

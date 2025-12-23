@@ -12,7 +12,7 @@
     - **Recently Used**: Sort by most recently launched.
     - **Frequently Used**: Sort by usage count.
 - **Reset Stats**: Added context-sensitive "Reset" buttons in Settings to clear usage statistics for "Recently Used" and "Frequently Used" sorting modes.
-- **AppImage Support**: Added build configuration for generating AppImage bundle.
+- **AppImage & Archive Support**: Automated build for AppImage and generic Linux archive (`tar.gz`) containing all resources.
 
 ### Changed
 - **UI Polish**:
