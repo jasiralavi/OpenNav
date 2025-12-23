@@ -237,13 +237,15 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                 }
 
                 // 2. Fallback to Theme
-                let display = gtk4::gdk::Display::default().expect("No display");
-                let theme = gtk4::IconTheme::for_display(&display);
-                
-                if theme.has_icon("globe-symbolic") {
-                    entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("globe-symbolic"));
-                } else if theme.has_icon("applications-internet") {
-                    entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("applications-internet"));
+                if let Some(display) = gtk4::gdk::Display::default() {
+                    let theme = gtk4::IconTheme::for_display(&display);
+                    if theme.has_icon("globe-symbolic") {
+                        entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("globe-symbolic"));
+                    } else if theme.has_icon("applications-internet") {
+                        entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("applications-internet"));
+                    } else {
+                        entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("network-server-symbolic"));
+                    }
                 } else {
                     entry.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("network-server-symbolic"));
                 }
@@ -309,21 +311,25 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                 }
                 
                 // Verify Icon Existence
-                let display = gtk4::gdk::Display::default().expect("No display");
-                let theme = gtk4::IconTheme::for_display(&display);
-                
-                if theme.has_icon(&icon_name) {
-                    entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some(&icon_name));
+                if let Some(display) = gtk4::gdk::Display::default() {
+                    let theme = gtk4::IconTheme::for_display(&display);
+                    
+                    if theme.has_icon(&icon_name) {
+                        entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some(&icon_name));
+                    } else {
+                         // Try alternatives
+                         if icon_name == "google-chrome" && theme.has_icon("google") {
+                              entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("google"));
+                         } else if icon_name == "duckduckgo" && theme.has_icon("preferences-web-browser") {
+                              entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("preferences-web-browser"));
+                         } else {
+                              // Final Fallback (Search Glass)
+                              entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("system-search-symbolic"));
+                         }
+                    }
                 } else {
-                     // Try alternatives
-                     if icon_name == "google-chrome" && theme.has_icon("google") {
-                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("google"));
-                     } else if icon_name == "duckduckgo" && theme.has_icon("preferences-web-browser") {
-                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("preferences-web-browser"));
-                     } else {
-                          // Final Fallback (Search Glass)
-                          entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some("system-search-symbolic"));
-                     }
+                    // No display, blindly set
+                    entry_for_icon.set_icon_from_icon_name(gtk4::EntryIconPosition::Primary, Some(&icon_name));
                 }
 
             } else {
