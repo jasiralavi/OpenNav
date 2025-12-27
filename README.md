@@ -97,6 +97,44 @@ To open OpenNav instantly with a keyboard shortcut (e.g., `Super+B` or `Ctrl+Alt
 | **Esc** | Close / Clear Search |
 
 
+## Adding Custom Profiles (Firefox & Chrome)
+
+OpenNav detects browsers by scanning your system's `.desktop` files. To add a specific browser profile (like "Work" or "Personal"), you need to create a custom desktop entry for it.
+
+### Firefox Profile
+1.  **Create Profile**: Run `firefox -P` in your terminal to create a new profile (e.g., named "Work").
+2.  **Create Desktop File**: Create `~/.local/share/applications/firefox-work.desktop`.
+3.  **Add Content**:
+    ```ini
+    [Desktop Entry]
+    Name=Firefox Work
+    Exec=firefox -P "Work" %u
+    Icon=firefox
+    Type=Application
+    MimeType=x-scheme-handler/http;x-scheme-handler/https;
+    ```
+    > **Note**: The `-P "ProfileName"` flag is the key part.
+
+### Chrome Profile
+1.  **Find Profile Path**: Chrome uses internal names like "Profile 1". Run `ls ~/.config/google-chrome/ | grep Profile` to list them.
+2.  **Verify**: Test with `google-chrome --profile-directory="Profile 1"`.
+3.  **Create Desktop File**: Create `~/.local/share/applications/chrome-work.desktop`.
+4.  **Add Content**:
+    ```ini
+    [Desktop Entry]
+    Name=Chrome Work
+    Exec=/usr/bin/google-chrome --profile-directory="Profile 1" %U
+    Icon=google-chrome
+    Type=Application
+    MimeType=x-scheme-handler/http;x-scheme-handler/https;
+    ```
+
+### Important: Update Database
+After creating any `.desktop` file, you **must** run this command for OpenNav to detect the new entry:
+
+```bash
+update-desktop-database ~/.local/share/applications
+```
 
 ## License
 
