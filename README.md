@@ -2,11 +2,11 @@
 
 **OpenNav** is a lightweight, keyboard-centric browser selector/launcher written in Rust using GTK4. 
 
-» Launch any browser that's installed in your system
-» Open links in browser of your choice (just set OpenNav as your default browser)
-» Launch searches with search engines of your choice in the browser of your choice 
-» (yes, you can add/manage search engines in OpenNav and configure keywords)
-» Launch in a specific profile (just create a .desktop file for it)
+-   Launch any browser that's installed in your system
+-   Open links in browser of your choice (just set OpenNav as your default browser)
+-   Launch searches with search engines of your choice in the browser of your choice 
+-   (yes, you can add/manage search engines in OpenNav and configure keywords)
+-   Launch in a specific profile (just create a .desktop file for it)
 
 It automatically detects your installed browsers and lets you quickly select which one to launch, search something or open a link with. It learns your preferences over time, sorting your most-used or most recently used browsers to the top (or just set it to list alphabetically).
 
