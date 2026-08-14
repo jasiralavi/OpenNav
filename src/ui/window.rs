@@ -538,6 +538,18 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                                      String::new()
                                  };
 
+                                 if browser_repository::is_google_chrome(browser) {
+                                     if let Some(win) = win_inner.upgrade() {
+                                         crate::ui::chrome_profile_dialog::show_profile_picker(
+                                             &win,
+                                             browser.id.clone(),
+                                             target_url,
+                                             "",
+                                         );
+                                     }
+                                     return;
+                                 }
+
                                  // Increment usage
                                  if let Ok(store) = crate::data::store::Store::new() {
                                      let _ = store.increment_usage(&browser.id);
@@ -701,6 +713,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             
             let shortcuts = [
                 ("Type", "Search Browsers"),
+                ("cp", "Search Chrome Profiles"),
                 ("Ctrl + L", "Focus URL Bar"),
                 ("Up/Down Arrows", "Navigation"),
                 ("Enter / Click", "Launch Selected"),
@@ -956,6 +969,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let help_btn_weak = help_btn.downgrade();
     let settings_btn_weak = settings_btn.downgrade();
 
+    let window_for_cp = window.clone();
     key_controller.connect_key_pressed(move |_controller, key, _keycode, modifiers| {
         // Handle Esc globally (Highest priority)
         if key == gtk4::gdk::Key::Escape {
@@ -1113,6 +1127,16 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                                  String::new()
                              };
 
+                             if browser_repository::is_google_chrome(browser) {
+                                 crate::ui::chrome_profile_dialog::show_profile_picker(
+                                     &window,
+                                     browser.id.clone(),
+                                     target_url,
+                                     "",
+                                 );
+                                 return gtk4::glib::Propagation::Stop;
+                             }
+
                              if let Ok(store) = crate::data::store::Store::new() {
                                  let _ = store.increment_usage(&browser.id);
                              }
@@ -1149,6 +1173,39 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                 query.clone()
             };
             
+            if query_str.eq_ignore_ascii_case("cp") {
+                if let Some(browser) = browsers_for_key
+                    .iter()
+                    .find(|b| browser_repository::is_google_chrome(b))
+                {
+                    let target_url = url_entry_weak_2
+                        .upgrade()
+                        .map(|entry| entry.text().to_string())
+                        .unwrap_or_default();
+
+                    // Clear browser search before opening Chrome profiles.
+                    search_query_clone.borrow_mut().clear();
+
+                    if let Some(f) = filter_weak.upgrade() {
+                        f.set_search(None::<&str>);
+                        refresh_rows(
+                            &active_rows_clone,
+                            "",
+                            &pinned_map_clone.borrow(),
+                        );
+                    }
+
+                    crate::ui::chrome_profile_dialog::show_profile_picker(
+                        &window_for_cp,
+                        browser.id.clone(),
+                        target_url,
+                        "",
+                    );
+
+                    return gtk4::glib::Propagation::Stop;
+                }
+            }
+
             if let Some(f) = filter_weak.upgrade() {
                  f.set_search(Some(query_str.as_str()));
                  refresh_rows(&active_rows_clone, &query_str, &pinned_map_clone.borrow());

@@ -25,6 +25,10 @@ cp opennav.desktop opennav-appimage.desktop
 sed -i 's|^Exec=.*|Exec=opennav %u|' opennav-appimage.desktop
 sed -i 's|^Icon=.*|Icon=opennav|' opennav-appimage.desktop
 
+# Copy resources to AppDir
+mkdir -p AppDir/usr/share/opennav
+cp -r resources AppDir/usr/share/opennav/
+
 # 4. Generate AppImage
 echo "[4/4] Generating AppImage..."
 

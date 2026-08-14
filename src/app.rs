@@ -6,21 +6,28 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(url: Option<String>) -> Self {
+    pub fn new() -> Self {
         let app = Application::builder()
             .application_id("com.opennav.app")
             .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
             .build();
             
-        let url_clone = url.clone();
+        // Default activation (no args)
         app.connect_activate(move |app| {
-            crate::ui::window::build_ui(app, url_clone.as_deref());
+            crate::ui::window::build_ui(app, None);
         });
         
-        // When HANDLES_COMMAND_LINE is set, we must handle the command-line signal
-        // or the app won't activate properly with args.
-        app.connect_command_line(|app, _cmd| {
-            app.activate();
+        // Command line activation (with args)
+        // This handles both primary arg parsing and secondary instance activation
+        app.connect_command_line(move |app, cmd| {
+            let args = cmd.arguments();
+            let url = if args.len() > 1 {
+                Some(args[1].to_string_lossy().to_string())
+            } else {
+                None
+            };
+            
+            crate::ui::window::build_ui(app, url.as_deref());
             0
         });
         

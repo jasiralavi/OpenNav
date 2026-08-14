@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=OpenNav
 Comment=Fast Browser Launcher
-Exec=/home/jasir/Code/OpenNav/target/debug/opennav %u
+Exec=/home/jasir/Code/OpenNav/target/release/opennav %u
 Icon=/home/jasir/Code/OpenNav/resources/opennav.png
 Terminal=false
 Type=Application

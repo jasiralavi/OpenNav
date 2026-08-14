@@ -97,24 +97,70 @@ pub fn launch_browser(browser_id: &str, url: &str) -> Result<(), Box<dyn std::er
                     }
                     
                     // Smart Argument Handling
-                    // 1. If it has a protocol (://), it's a URL.
-                    // 2. If it has dots NO spaces (example.com), treat as domain -> prepend https://
-                    // 3. Otherwise (spaces, no dots), treat as SEARCH -> https://google.com/search?q=...
-                    
-                    let final_arg = if url.contains("://") {
-                        url.to_string()
-                    } else if url.contains(' ') || !url.contains('.') {
-                        // Treat as Search
-                        // TODO: Ideally configurable, defaulting to Google
-                        let query = url.replace(" ", "+");
-                        format!("https://www.google.com/search?q={}", query)
-                    } else {
-                        // Treat as Domain (e.g. "example.com", "localhost:3000")
-                        format!("https://{}", url)
-                    };
+                // Smart Argument Handling
+                let is_url = url.contains("://");
+                let is_search = !is_url && (url.contains(' ') || !url.contains('.'));
+                
+                if is_search {
+                    let mut final_url = String::new();
+                    // Check for keyword (e.g. "g query")
+                    let parts: Vec<&str> = url.splitn(2, ' ').collect();
+                    let mut used_keyword = false;
 
-                    // Append user input
-                    command.arg(final_arg);
+                    if parts.len() > 1 {
+                        let potential_keyword = parts[0];
+                        let query = parts[1];
+                        
+                        // Try resolve by keyword
+                        if let Ok(store) = crate::data::store::Store::new() {
+                            if let Ok(Some(engine)) = store.get_engine_by_keyword(potential_keyword) {
+                                final_url = engine.url.replace("{}", &query.replace(" ", "+"));
+                                used_keyword = true;
+                            }
+                        }
+                    }
+                    
+                    if !used_keyword {
+                         // Use Default Engine from Settings
+                         let mut engine_url = "https://www.google.com/search?q={}".to_string(); // Fallback
+                         
+                         if let Ok(store) = crate::data::store::Store::new() {
+                             // Get setting (which should now be a KEYWORD like 'g', or legacy name 'Google')
+                             let setting = store.get_setting("search_engine").ok().flatten().unwrap_or("g".to_string());
+                             
+                             // Try to find the engine for this setting
+                             // If it matches a legacy name, map it to a keyword manually or checking logic
+                             let keyword = match setting.as_str() {
+                                 "Google" => "g",
+                                 "DuckDuckGo" => "d",
+                                 "Bing" => "b",
+                                 "Brave" => "br",
+                                 "Ecosia" => "e",
+                                 k => k,
+                             };
+                             
+                             if let Ok(Some(engine)) = store.get_engine_by_keyword(keyword) {
+                                 engine_url = engine.url.clone();
+                             } else {
+                                 // Fallback if DB lookup fails (shouldn't happen with seeding)
+                                 if setting == "DuckDuckGo" { engine_url = "https://duckduckgo.com/?q={}".to_string(); }
+                             }
+                         }
+                         
+                         let query_encoded = url.replace(" ", "+");
+                         final_url = engine_url.replace("{}", &query_encoded);
+                    }
+
+                    command.arg(final_url);
+                } else {
+                     // It's a URL or Domain
+                     let final_url = if is_url {
+                         url.to_string()
+                     } else {
+                         format!("https://{}", url)
+                     };
+                     command.arg(final_url);
+                }
                     
                     // Detach process
                     let _ = command.spawn().map_err(|e| format!("Failed to spawn command: {}", e))?;
@@ -132,4 +178,103 @@ pub fn launch_browser(browser_id: &str, url: &str) -> Result<(), Box<dyn std::er
     } else {
         Err(format!("Browser {} not found", browser_id).into())
     }
+}
+
+
+pub fn is_google_chrome(browser: &Browser) -> bool {
+    let id = browser.id.to_lowercase();
+    let name = browser.name.to_lowercase();
+    id.contains("google-chrome") || name.contains("google chrome")
+}
+
+fn chrome_profile_target(url: &str) -> Option<String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    let is_url = url.contains("://");
+    let is_search = !is_url && (url.contains(' ') || !url.contains('.'));
+
+    if !is_search {
+        return Some(if is_url {
+            url.to_string()
+        } else {
+            format!("https://{}", url)
+        });
+    }
+
+    let parts: Vec<&str> = url.splitn(2, ' ').collect();
+
+    if parts.len() > 1 {
+        let potential_keyword = parts[0];
+        let query = parts[1];
+
+        if let Ok(store) = crate::data::store::Store::new() {
+            if let Ok(Some(engine)) = store.get_engine_by_keyword(potential_keyword) {
+                return Some(engine.url.replace("{}", &query.replace(' ', "+")));
+            }
+        }
+    }
+
+    let mut engine_url = "https://www.google.com/search?q={}".to_string();
+
+    if let Ok(store) = crate::data::store::Store::new() {
+        let setting = store
+            .get_setting("search_engine")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "g".to_string());
+
+        let keyword = match setting.as_str() {
+            "Google" => "g",
+            "DuckDuckGo" => "d",
+            "Bing" => "b",
+            "Brave" => "br",
+            "Ecosia" => "e",
+            k => k,
+        };
+
+        if let Ok(Some(engine)) = store.get_engine_by_keyword(keyword) {
+            engine_url = engine.url;
+        }
+    }
+
+    Some(engine_url.replace("{}", &url.replace(' ', "+")))
+}
+
+pub fn launch_chrome_profile(
+    browser_id: &str,
+    profile_directory: &str,
+    url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = gtk4::gio::DesktopAppInfo::new(browser_id)
+        .ok_or_else(|| format!("Browser {} not found", browser_id))?;
+
+    let cmd_line = app
+        .commandline()
+        .ok_or("Chrome command line not available")?;
+
+    let cmd_str = cmd_line.to_string_lossy().into_owned();
+    let mut args = shlex::split(&cmd_str).ok_or("Unable to parse Chrome command line")?;
+    args.retain(|arg| !arg.starts_with('%'));
+
+    if args.is_empty() {
+        return Err("Chrome command line is empty".into());
+    }
+
+    let mut command = std::process::Command::new(&args[0]);
+
+    for arg in args.iter().skip(1) {
+        command.arg(arg);
+    }
+
+    command.arg(format!("--profile-directory={}", profile_directory));
+
+    if let Some(target) = chrome_profile_target(url) {
+        command.arg(target);
+    }
+
+    command.spawn()?;
+    Ok(())
 }
