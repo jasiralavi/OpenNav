@@ -124,6 +124,26 @@ fn populate(list: &ListBox, status: &Label) {
 }
 
 fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<Bookmark>) {
+    let weak_list = list.downgrade();
+    let status = status.clone();
+    show_form(parent, target, None, move || {
+        status.set_text("");
+        if let Some(list) = weak_list.upgrade() {
+            populate(&list, &status);
+        }
+    });
+}
+
+pub fn show_missing_bookmark(parent: &Window, keyword: &str) {
+    show_form(parent, None, Some(keyword), || {});
+}
+
+fn show_form(
+    parent: &Window,
+    target: Option<Bookmark>,
+    missing: Option<&str>,
+    on_saved: impl Fn() + 'static,
+) {
     let dialog = Window::builder()
         .transient_for(parent)
         .modal(true)
@@ -139,6 +159,14 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
     content.set_margin_bottom(20);
     content.set_margin_start(20);
     content.set_margin_end(20);
+    if let Some(keyword) = missing {
+        let message = Label::new(Some(&format!(
+            "Bookmark shortcut ‘.{keyword}’ is not available. Add it below if you’d like."
+        )));
+        message.set_wrap(true);
+        message.set_halign(Align::Start);
+        content.append(&message);
+    }
     let name = Entry::builder().placeholder_text("Dashboard").build();
     let keyword = Entry::builder().placeholder_text("dp").build();
     let url = Entry::builder()
@@ -147,7 +175,7 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
     for (title, entry) in [
         ("Name", &name),
         ("Keyword (without the dot)", &keyword),
-        ("URL", &url),
+        ("Link", &url),
     ] {
         content.append(&Label::new(Some(title)));
         content.append(entry);
@@ -157,15 +185,32 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
         keyword.set_text(&bookmark.keyword);
         url.set_text(&bookmark.url);
     }
+    if let Some(value) = missing {
+        keyword.set_text(value);
+    }
     let error = Label::new(None);
     error.set_wrap(true);
     content.append(&error);
-    let save = Button::with_label("Save Bookmark");
-    save.add_css_class("suggested-action");
-    content.append(&save);
+    let actions = GtkBox::new(Orientation::Horizontal, 10);
+    actions.set_halign(Align::End);
+    let cancel = Button::with_label("Cancel");
     let weak_dialog = dialog.downgrade();
-    let weak_list = list.downgrade();
-    let status = status.clone();
+    cancel.connect_clicked(move |_| {
+        if let Some(dialog) = weak_dialog.upgrade() {
+            dialog.close();
+        }
+    });
+    actions.append(&cancel);
+    let save = Button::with_label(if missing.is_some() {
+        "Add"
+    } else {
+        "Save Bookmark"
+    });
+    save.add_css_class("suggested-action");
+    actions.append(&save);
+    content.append(&actions);
+    let name_focus = name.clone();
+    let weak_dialog = dialog.downgrade();
     save.connect_clicked(move |_| {
         let result = (|| -> anyhow::Result<()> {
             let store = Store::new()?;
@@ -192,10 +237,7 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
         })();
         match result {
             Ok(()) => {
-                status.set_text("");
-                if let Some(list) = weak_list.upgrade() {
-                    populate(&list, &status);
-                }
+                on_saved();
                 if let Some(dialog) = weak_dialog.upgrade() {
                     dialog.close();
                 }
@@ -205,10 +247,20 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
     });
     let weak_dialog = dialog.downgrade();
     let keys = gtk4::EventControllerKey::new();
-    keys.connect_key_pressed(move |_, key, _, _| {
+    keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    let weak_save = save.downgrade();
+    keys.connect_key_pressed(move |_, key, _, modifiers| {
         if key == gtk4::gdk::Key::Escape {
             if let Some(dialog) = weak_dialog.upgrade() {
                 dialog.close();
+            }
+            return gtk4::glib::Propagation::Stop;
+        }
+        if matches!(key, gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter)
+            && modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK)
+        {
+            if let Some(save) = weak_save.upgrade() {
+                save.emit_clicked();
             }
             return gtk4::glib::Propagation::Stop;
         }
@@ -217,4 +269,5 @@ fn show_editor(parent: &Window, list: &ListBox, status: &Label, target: Option<B
     dialog.add_controller(keys);
     dialog.set_child(Some(&content));
     dialog.present();
+    name_focus.grab_focus();
 }

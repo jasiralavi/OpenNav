@@ -344,5 +344,82 @@ fn keyboard_navigation_preserves_selection() {
         &capture,
         "firefox\nhttps://www.google.com/search?q=rust+gtk\n",
     );
+    // Unknown bookmarks offer an optional inline add flow, keeping the original request.
+    let _ = std::fs::remove_file(&capture);
+    entry.set_text(".fir -ff");
+    entry.grab_focus();
+    press(&win, gdk::Key::Return);
+    let editor = titled_window("Add Bookmark");
+    let fields = entries(&editor);
+    assert_eq!(fields[1].text(), "fir");
+    assert!(descendants(editor.upcast_ref())
+        .iter()
+        .filter_map(|w| w.downcast_ref::<Label>())
+        .any(|label| label.text().contains("not available")));
+    screenshot(&editor, "missing-bookmark");
+    press_with_modifiers(&editor, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK);
+    assert!(editor.is_visible());
+    assert!(crate::data::shortcuts::LauncherSettings::load(&store)
+        .unwrap()
+        .bookmarks
+        .is_empty());
+    fields[0].set_text("Firefox resources");
+    fields[2].set_text("invalid-link");
+    press_with_modifiers(&editor, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK);
+    assert!(editor.is_visible());
+    fields[2].set_text("https://example.com/firefox?a=1&b=2");
+    press_with_modifiers(&editor, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK);
+    assert!(!editor.is_visible());
+    assert_eq!(
+        crate::data::shortcuts::LauncherSettings::load(&store)
+            .unwrap()
+            .bookmarks[0]
+            .keyword,
+        "fir"
+    );
+    assert!(
+        !std::path::Path::new(&capture).exists(),
+        "Adding should save without launching"
+    );
+    assert_eq!(entry.text(), ".fir -ff");
+    entry.grab_focus();
+    press_with_modifiers(&win, gdk::Key::Return, gdk::ModifierType::CONTROL_MASK);
+    assert_capture(&capture, "firefox\nhttps://example.com/firefox?a=1&b=2\n");
+    for use_escape in [true, false] {
+        entry.set_text(".cancel -ff");
+        entry.grab_focus();
+        press(&win, gdk::Key::Return);
+        let editor = titled_window("Add Bookmark");
+        if use_escape {
+            press(&editor, gdk::Key::Escape);
+        } else {
+            button(&editor, "Cancel").emit_clicked();
+        }
+        assert!(!editor.is_visible());
+        assert_eq!(
+            crate::data::shortcuts::LauncherSettings::load(&store)
+                .unwrap()
+                .bookmarks
+                .len(),
+            1
+        );
+    }
+    entry.set_text(".click -ff");
+    entry.grab_focus();
+    press(&win, gdk::Key::Return);
+    let editor = titled_window("Add Bookmark");
+    let fields = entries(&editor);
+    fields[0].set_text("Click to add");
+    fields[2].set_text("https://example.com/click");
+    button(&editor, "Add").emit_clicked();
+    assert!(!editor.is_visible());
+    assert_eq!(
+        crate::data::shortcuts::LauncherSettings::load(&store)
+            .unwrap()
+            .bookmarks
+            .len(),
+        2
+    );
+
     win.close();
 }

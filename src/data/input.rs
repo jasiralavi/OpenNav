@@ -7,6 +7,19 @@ pub struct LaunchRequest {
     pub target: String,
 }
 
+#[derive(Debug)]
+pub struct MissingBookmark {
+    pub keyword: String,
+}
+
+impl std::fmt::Display for MissingBookmark {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bookmark shortcut ‘.{}’ is not available.", self.keyword)
+    }
+}
+
+impl std::error::Error for MissingBookmark {}
+
 /// Remove a trailing browser selector before interpreting aliases or bookmarks.
 pub fn resolve_request(
     input: &str,
@@ -39,7 +52,9 @@ pub fn resolve_request(
             .iter()
             .find(|b| b.keyword.eq_ignore_ascii_case(keyword))
             .ok_or_else(|| {
-                anyhow::anyhow!("Unknown bookmark ‘{text}’. Add it in Settings → Bookmarks.")
+                anyhow::Error::new(MissingBookmark {
+                    keyword: keyword.to_ascii_lowercase(),
+                })
             })?
             .url
             .clone()

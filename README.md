@@ -129,8 +129,10 @@ You can also append a browser selector in the URL/search field:
 
 Add a bookmark's name, keyword (e.g. `dp`), and complete HTTP(S) URL in Settings.
 Bookmark keywords are unique and use a dot prefix when launching, so `.g` and the
-search alias `g` can coexist. Unknown bookmarks/selectors show an error instead of
-opening an unintended URL. Search URLs accept both `{}` and `%s` placeholders.
+search alias `g` can coexist. Unknown bookmarks offer an optional add dialog with the keyword prefilled.
+Fill in Name and Link, then choose Add or press Ctrl+Enter to save. Cancel or Esc
+closes the dialog. Saving keeps your original request ready to launch. Unknown
+browser selectors show an error. Search URLs accept both `{}` and `%s` placeholders.
 
 ## Validation
 

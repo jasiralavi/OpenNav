@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-09-18
+
+### Added
+- Unknown bookmark shortcuts offer a prefilled add-bookmark dialog with Name, Keyword and Link fields.
+- Cancel or Esc dismisses the editor; Add or Ctrl+Enter saves a valid bookmark without opening it automatically.
+
 ## [1.3.0] - 2026-09-18
 
 ### Added

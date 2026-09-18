@@ -56,6 +56,13 @@ pub fn launch(
         Ok(())
     })();
     if let Err(error) = result {
+        if let Some(missing) = error.downcast_ref::<input::MissingBookmark>() {
+            crate::ui::bookmarks_dialog::show_missing_bookmark(
+                window.upcast_ref(),
+                &missing.keyword,
+            );
+            return;
+        }
         gtk4::AlertDialog::builder()
             .message("Unable to open this request")
             .detail(error.to_string())
