@@ -95,8 +95,15 @@ fn add_row(list_box: &ListBox, engine: SearchEngine) {
     let name_label = Label::builder().label(&engine.name).halign(Align::Start).build();
     name_label.add_css_class("heading");
     
+    let keyword_escaped = gtk4::glib::markup_escape_text(&engine.keyword);
+    let url_escaped = gtk4::glib::markup_escape_text(&engine.url);
+
     let kw_label = Label::builder()
-         .label(&format!("<tt>{}</tt>  <span color='gray'>{}</span>", engine.keyword, engine.url))
+         .label(&format!(
+             "<tt>{}</tt>  <span color='gray'>{}</span>",
+             keyword_escaped,
+             url_escaped
+         ))
          .halign(Align::Start)
          .use_markup(true)
          .ellipsize(gtk4::pango::EllipsizeMode::End)
