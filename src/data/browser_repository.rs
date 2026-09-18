@@ -96,72 +96,10 @@ pub fn launch_browser(browser_id: &str, url: &str) -> Result<(), Box<dyn std::er
                         command.arg(arg);
                     }
                     
-                    // Smart Argument Handling
-                // Smart Argument Handling
-                let is_url = url.contains("://");
-                let is_search = !is_url && (url.contains(' ') || !url.contains('.'));
-                
-                if is_search {
-                    let mut final_url = String::new();
-                    // Check for keyword (e.g. "g query")
-                    let parts: Vec<&str> = url.splitn(2, ' ').collect();
-                    let mut used_keyword = false;
-
-                    if parts.len() > 1 {
-                        let potential_keyword = parts[0];
-                        let query = parts[1];
-                        
-                        // Try resolve by keyword
-                        if let Ok(store) = crate::data::store::Store::new() {
-                            if let Ok(Some(engine)) = store.get_engine_by_keyword(potential_keyword) {
-                                final_url = engine.url.replace("{}", &query.replace(" ", "+"));
-                                used_keyword = true;
-                            }
-                        }
-                    }
-                    
-                    if !used_keyword {
-                         // Use Default Engine from Settings
-                         let mut engine_url = "https://www.google.com/search?q={}".to_string(); // Fallback
-                         
-                         if let Ok(store) = crate::data::store::Store::new() {
-                             // Get setting (which should now be a KEYWORD like 'g', or legacy name 'Google')
-                             let setting = store.get_setting("search_engine").ok().flatten().unwrap_or("g".to_string());
-                             
-                             // Try to find the engine for this setting
-                             // If it matches a legacy name, map it to a keyword manually or checking logic
-                             let keyword = match setting.as_str() {
-                                 "Google" => "g",
-                                 "DuckDuckGo" => "d",
-                                 "Bing" => "b",
-                                 "Brave" => "br",
-                                 "Ecosia" => "e",
-                                 k => k,
-                             };
-                             
-                             if let Ok(Some(engine)) = store.get_engine_by_keyword(keyword) {
-                                 engine_url = engine.url.clone();
-                             } else {
-                                 // Fallback if DB lookup fails (shouldn't happen with seeding)
-                                 if setting == "DuckDuckGo" { engine_url = "https://duckduckgo.com/?q={}".to_string(); }
-                             }
-                         }
-                         
-                         let query_encoded = url.replace(" ", "+");
-                         final_url = engine_url.replace("{}", &query_encoded);
+                    if let Some(target) = chrome_profile_target(url) {
+                        command.arg(target);
                     }
 
-                    command.arg(final_url);
-                } else {
-                     // It's a URL or Domain
-                     let final_url = if is_url {
-                         url.to_string()
-                     } else {
-                         format!("https://{}", url)
-                     };
-                     command.arg(final_url);
-                }
-                    
                     // Detach process
                     let _ = command.spawn().map_err(|e| format!("Failed to spawn command: {}", e))?;
                     return Ok(());
@@ -187,60 +125,12 @@ pub fn is_google_chrome(browser: &Browser) -> bool {
     id.contains("google-chrome") || name.contains("google chrome")
 }
 
-fn chrome_profile_target(url: &str) -> Option<String> {
-    let url = url.trim();
-    if url.is_empty() {
-        return None;
-    }
-
-    let is_url = url.contains("://");
-    let is_search = !is_url && (url.contains(' ') || !url.contains('.'));
-
-    if !is_search {
-        return Some(if is_url {
-            url.to_string()
-        } else {
-            format!("https://{}", url)
-        });
-    }
-
-    let parts: Vec<&str> = url.splitn(2, ' ').collect();
-
-    if parts.len() > 1 {
-        let potential_keyword = parts[0];
-        let query = parts[1];
-
-        if let Ok(store) = crate::data::store::Store::new() {
-            if let Ok(Some(engine)) = store.get_engine_by_keyword(potential_keyword) {
-                return Some(engine.url.replace("{}", &query.replace(' ', "+")));
-            }
-        }
-    }
-
-    let mut engine_url = "https://www.google.com/search?q={}".to_string();
-
-    if let Ok(store) = crate::data::store::Store::new() {
-        let setting = store
-            .get_setting("search_engine")
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "g".to_string());
-
-        let keyword = match setting.as_str() {
-            "Google" => "g",
-            "DuckDuckGo" => "d",
-            "Bing" => "b",
-            "Brave" => "br",
-            "Ecosia" => "e",
-            k => k,
-        };
-
-        if let Ok(Some(engine)) = store.get_engine_by_keyword(keyword) {
-            engine_url = engine.url;
-        }
-    }
-
-    Some(engine_url.replace("{}", &url.replace(' ', "+")))
+fn chrome_profile_target(input: &str) -> Option<String> {
+    if input.trim().is_empty() { return None; }
+    let store = crate::data::store::Store::new().ok();
+    let engines = store.as_ref().and_then(|s| s.list_engines().ok()).unwrap_or_default();
+    let default = store.as_ref().and_then(|s| s.get_setting("search_engine").ok().flatten()).unwrap_or_else(|| "g".into());
+    Some(crate::data::input::resolve_target(input, &engines, &default))
 }
 
 pub fn launch_chrome_profile(

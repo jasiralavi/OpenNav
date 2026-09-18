@@ -92,7 +92,10 @@ To open OpenNav instantly with a keyboard shortcut (e.g., `Super+B` or `Ctrl+Alt
 | Key | Action |
 | :--- | :--- |
 | **Type** | Filter list |
-| **Ctrl + L** | Focus URL Bar |
+| **Ctrl + L / Left Arrow from list** | Focus URL Bar, preserving the selected browser |
+| **cc** (configurable) | Open Chrome profile picker |
+| **Browser shortcut** | Select its browser; configure in Settings |
+| **.keyword** | Enter a bookmark to open |
 | **Up / Down** | Navigation |
 | **Enter / Click** | Launch Selected |
 | **Ctrl + Enter** | Launch & Keep Open |
@@ -101,6 +104,46 @@ To open OpenNav instantly with a keyboard shortcut (e.g., `Super+B` or `Ctrl+Alt
 | **Ctrl + S** | Open Settings |
 | **Ctrl + ?** | Show Shortcuts |
 | **Esc** | Close / Clear Search |
+
+
+## Browser Shortcuts and Bookmarks
+
+Settings includes **Browser Shortcuts** and **Bookmarks**. Shortcuts use exactly two
+letters, are saved in lowercase, and take effect immediately. Chrome profiles default
+to `cc` (replacing the old hardcoded `cp`). Each detected browser receives a unique
+shortcut, normally `fx` for Firefox, `me` for Microsoft Edge, `gc` for Chrome, and `bv`
+for Brave. Existing search aliases and saved shortcuts are reserved; if a preferred
+shortcut is taken, OpenNav assigns an unused one. Check Settings for your mappings.
+
+Type a browser shortcut while the browser list is focused to select it. Press Left
+Arrow to enter a URL or search without losing that selection, then Enter to launch.
+You can also append a browser selector in the URL/search field:
+
+| Input | Result |
+| :--- | :--- |
+| `g rust gtk -fx` | Google search for “rust gtk” in Firefox |
+| `br rust gtk -me` | Existing Brave Search alias in Microsoft Edge |
+| `example.com -fx` | Open the site in Firefox |
+| `.dp` | Open the bookmark with keyword `dp` in the selected browser |
+| `.dp -fx` | Open that bookmark in Firefox |
+
+Add a bookmark's name, keyword (e.g. `dp`), and complete HTTP(S) URL in Settings.
+Bookmark keywords are unique and use a dot prefix when launching, so `.g` and the
+search alias `g` can coexist. Unknown bookmarks/selectors show an error instead of
+opening an unintended URL. Search URLs accept both `{}` and `%s` placeholders.
+
+## Validation
+
+```bash
+cargo test --release
+./tests/run-ui.sh       # Requires a running graphical session
+cargo build --release
+./build_appimage.sh
+```
+
+The UI test uses temporary settings and fake browser launchers. It verifies keyboard
+navigation, settings changes, bookmarks, markup rendering, and launch arguments
+without changing your OpenNav data or opening real browser pages.
 
 
 ## Adding Custom Profiles (Firefox & Chrome)

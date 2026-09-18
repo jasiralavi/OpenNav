@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0] - 2026-09-18
+
+### Added
+- Left Arrow focuses the URL/search field while preserving browser selection.
+- Configurable Chrome-profile shortcut (default `cc`) and unique two-letter shortcuts for detected browsers.
+- Trailing browser selectors, including search combinations such as `g rust gtk -fx`.
+- Bookmark management with name, keyword and URL; `.dp` and `.dp -fx` launch saved bookmarks.
+- Collision validation, lowercase normalization, and isolated GTK integration tests.
+
+### Fixed
+- Includes the Rhymezone URL markup escaping fix in the rebuilt AppImage, with a rendering regression test.
+- Search queries are URL-encoded consistently for ordinary browsers and Chrome profiles; both `{}` and `%s` templates are supported.
+- Duplicate search aliases can no longer silently overwrite an existing engine.
+
 ## [1.2.5] - 2025-12-23
 ### Fixed
 - **Release**: Aligned release workflow script exactly with verified local build steps.

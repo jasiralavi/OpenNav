@@ -350,6 +350,15 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
 
     // Browser List Logic
     let mut browsers = browser_repository::get_installed_browsers();
+    if let Some(ref store) = store {
+        let result = (|| -> anyhow::Result<()> {
+            let mut config = crate::data::shortcuts::LauncherSettings::load(store)?;
+            config.ensure_browsers(&browsers, &store.list_engines()?)?;
+            config.save(store)?;
+            Ok(())
+        })();
+        if let Err(error) = result { eprintln!("Unable to initialize shortcuts: {error}"); }
+    }
     
     if let Some(ref s) = store {
         if let Ok(stats) = s.get_stats() {
@@ -420,7 +429,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let filter_model = FilterListModel::builder()
         .model(&string_list)
         .filter(&filter)
-        .incremental(true)
+        .incremental(false)
         .build();
 
     let selection_model = SingleSelection::new(Some(filter_model));
@@ -538,32 +547,8 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                                      String::new()
                                  };
 
-                                 if browser_repository::is_google_chrome(browser) {
-                                     if let Some(win) = win_inner.upgrade() {
-                                         crate::ui::chrome_profile_dialog::show_profile_picker(
-                                             &win,
-                                             browser.id.clone(),
-                                             target_url,
-                                             "",
-                                         );
-                                     }
-                                     return;
-                                 }
-
-                                 // Increment usage
-                                 if let Ok(store) = crate::data::store::Store::new() {
-                                     let _ = store.increment_usage(&browser.id);
-                                 }
-                                 // Launch
-                                 let _ = browser_repository::launch_browser(&browser.id, &target_url);
-
                                  if let Some(win) = win_inner.upgrade() {
-                                     if !keep_open {
-                                         win.close();
-                                     } else {
-                                         // Re-present to ensure focus stays if needed
-                                         win.present();
-                                     }
+                                     crate::ui::launcher::launch(&win, browser, &browsers_inner, &target_url, keep_open);
                                  }
                              }
                          }
@@ -711,9 +696,16 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             vbox.set_margin_start(20);
             vbox.set_margin_end(20);
             
+            let profile_shortcut = Store::new().ok()
+                .and_then(|s| crate::data::shortcuts::LauncherSettings::load(&s).ok())
+                .map(|c| c.chrome_profile_shortcut).unwrap_or_else(|| "cc".into());
             let shortcuts = [
                 ("Type", "Search Browsers"),
-                ("cp", "Search Chrome Profiles"),
+                (profile_shortcut.as_str(), "Search Chrome Profiles"),
+                ("Left Arrow", "Focus URL Bar (keep browser)"),
+                ("Two-letter shortcut", "Select Browser (see Settings)"),
+                ("query -fx", "Use Browser Selector"),
+                (".keyword -fx", "Open Bookmark in Browser"),
                 ("Ctrl + L", "Focus URL Bar"),
                 ("Up/Down Arrows", "Navigation"),
                 ("Enter / Click", "Launch Selected"),
@@ -734,7 +726,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
 
             for (i, (key, desc)) in shortcuts.iter().enumerate() {
                 let key_label = Label::new(None);
-                key_label.set_markup(&format!("<b>{}</b>", key));
+                key_label.set_markup(&format!("<b>{}</b>", gtk4::glib::markup_escape_text(key)));
                 key_label.set_halign(Align::Start);
                 
                 let desc_label = Label::new(Some(desc));
@@ -753,7 +745,9 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             });
             vbox.append(&close_btn);
             
-            dialog.set_child(Some(&vbox));
+            let scroll = ScrolledWindow::builder().hscrollbar_policy(gtk4::PolicyType::Never)
+                .child(&vbox).build();
+            dialog.set_child(Some(&scroll));
             dialog.present();
         }
     });
@@ -808,7 +802,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             vbox.append(&logo);
             
             // About Section
-            let about_label = Label::new(Some("OpenNav v1.1.0\n<span size='small'>A fast browser picker and launcher.</span>"));
+            let about_label = Label::new(Some(&format!("OpenNav v{}\n<span size='small'>A fast browser picker and launcher.</span>", env!("CARGO_PKG_VERSION"))));
             about_label.set_use_markup(true);
             about_label.set_justify(gtk4::Justification::Center);
             vbox.append(&about_label);
@@ -894,6 +888,10 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             // Separator
             vbox.append(&gtk4::Separator::new(Orientation::Horizontal));
        
+            vbox.append(&crate::ui::shortcuts_dialog::build_shortcut_settings());
+
+            vbox.append(&crate::ui::bookmarks_dialog::build_bookmark_settings());
+
             // Embed Search Engine Management UI
             let engines_ui = crate::ui::engines_dialog::build_engine_management_ui();
             engines_ui.set_vexpand(true);
@@ -914,7 +912,9 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             });
             vbox.append(&close_btn);
             
-            dialog.set_child(Some(&vbox));
+            let scroll = ScrolledWindow::builder().hscrollbar_policy(gtk4::PolicyType::Never)
+                .child(&vbox).build();
+            dialog.set_child(Some(&scroll));
             dialog.present();
         }
     });
@@ -935,7 +935,15 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     let url_entry_weak = url_entry.downgrade();
     let selection_model_weak_for_list = selection_model.downgrade();
     let list_key_controller = gtk4::EventControllerKey::new();
-    list_key_controller.connect_key_pressed(move |_, key, _, modifiers| {
+    list_key_controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    list_key_controller.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk4::gdk::Key::Left {
+            if let Some(entry) = url_entry_weak.upgrade() {
+                entry.grab_focus();
+                entry.set_position(-1);
+            }
+            return gtk4::glib::Propagation::Stop;
+        }
 
         if key == gtk4::gdk::Key::Up {
              if let Some(sel) = selection_model_weak_for_list.upgrade() {
@@ -1127,33 +1135,8 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                                  String::new()
                              };
 
-                             if browser_repository::is_google_chrome(browser) {
-                                 crate::ui::chrome_profile_dialog::show_profile_picker(
-                                     &window,
-                                     browser.id.clone(),
-                                     target_url,
-                                     "",
-                                 );
-                                 return gtk4::glib::Propagation::Stop;
-                             }
-
-                             if let Ok(store) = crate::data::store::Store::new() {
-                                 let _ = store.increment_usage(&browser.id);
-                             }
-
-                             let _ = browser_repository::launch_browser(&browser.id, &target_url);
-
-                             if !modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
-                                 window.close();
-                             } else {
-                                 let window_weak_for_timeout = window.downgrade();
-                                 gtk4::glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
-                                     if let Some(win) = window_weak_for_timeout.upgrade() {
-                                         win.present();
-                                     }
-                                     gtk4::glib::ControlFlow::Break
-                                 });
-                             }
+                             crate::ui::launcher::launch(&window, browser, &browsers_for_key, &target_url,
+                                 modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK));
                         }
                     }
                 }
@@ -1161,6 +1144,17 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
             }
         }
         
+        if key == gtk4::gdk::Key::period && search_query_clone.borrow().is_empty() {
+            if let Some(entry) = url_entry_weak_2.upgrade() {
+                entry.set_text(".");
+                entry.grab_focus();
+                entry.set_position(-1);
+            }
+            return gtk4::glib::Propagation::Stop;
+        }
+        if modifiers.intersects(gtk4::gdk::ModifierType::CONTROL_MASK | gtk4::gdk::ModifierType::ALT_MASK | gtk4::gdk::ModifierType::SUPER_MASK) {
+            return gtk4::glib::Propagation::Proceed;
+        }
         // Handle Typing for Filter
         if let Some(ch) = key.to_unicode() {
             if ch.is_control() {
@@ -1173,7 +1167,29 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                 query.clone()
             };
             
-            if query_str.eq_ignore_ascii_case("cp") {
+            if let Some(config) = Store::new().ok().and_then(|s| crate::data::shortcuts::LauncherSettings::load(&s).ok()) {
+                if let Some(id) = config.browser_for_shortcut(&query_str) {
+                    if let Some(browser) = browsers_for_key.iter().find(|b| b.id == id) {
+                        search_query_clone.borrow_mut().clear();
+                        if let Some(filter) = filter_weak.upgrade() { filter.set_search(None::<&str>); }
+                        refresh_rows(&active_rows_clone, "", &pinned_map_clone.borrow());
+                        if let Some(list) = list_view_weak.upgrade() { list.grab_focus(); }
+                        if let Some(selection) = selection_model_weak.upgrade() {
+                            for index in 0..selection.n_items() {
+                                if selection.item(index).and_downcast::<gtk4::StringObject>()
+                                    .is_some_and(|s| s.string() == browser.name) {
+                                    selection.set_selected(index);
+                                    break;
+                                }
+                            }
+                        }
+                        return gtk4::glib::Propagation::Stop;
+                    }
+                }
+            }
+
+            if Store::new().ok().and_then(|s| crate::data::shortcuts::LauncherSettings::load(&s).ok())
+                .is_some_and(|c| query_str.eq_ignore_ascii_case(&c.chrome_profile_shortcut)) {
                 if let Some(browser) = browsers_for_key
                     .iter()
                     .find(|b| browser_repository::is_google_chrome(b))
@@ -1195,12 +1211,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
                         );
                     }
 
-                    crate::ui::chrome_profile_dialog::show_profile_picker(
-                        &window_for_cp,
-                        browser.id.clone(),
-                        target_url,
-                        "",
-                    );
+                    crate::ui::launcher::launch(&window_for_cp, browser, &browsers_for_key, &target_url, false);
 
                     return gtk4::glib::Propagation::Stop;
                 }
@@ -1243,3 +1254,7 @@ pub fn build_ui(app: &Application, url_to_open: Option<&str>) {
     // Focus list by default so typing searches
     list_view.grab_focus();
 }
+
+#[cfg(test)]
+#[path = "window_tests.rs"]
+mod tests;

@@ -2,3 +2,6 @@ pub mod browser_repository;
 pub mod chrome_profiles;
 pub mod store;
 pub mod icons;
+
+pub mod shortcuts;
+pub mod input;

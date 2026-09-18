@@ -297,13 +297,17 @@ fn show_add_edit_dialog(parent: &Window, list_box: ListBox, edit_target: Option<
     let dialog_weak = dialog.downgrade();
     let original_keyword = edit_target.map(|e| e.keyword);
     
+    let error_label = Label::new(None);
+    error_label.set_wrap(true);
+    vbox.append(&error_label);
     save_btn.connect_clicked(move |_| {
         let name = name_entry.text().to_string();
         let keyword = kw_entry.text().to_string();
         let url = url_entry.text().to_string();
         
         if name.is_empty() || keyword.is_empty() || url.is_empty() {
-            return; // TODO: Show error
+            error_label.set_text("Name, keyword and URL are required.");
+            return;
         }
         
         // Try fetch icon (only if new or changed? for now always fetch if logical)
@@ -325,6 +329,7 @@ fn show_add_edit_dialog(parent: &Window, list_box: ListBox, edit_target: Option<
                  store.add_engine(&engine)
             };
             
+            if let Err(error) = &res { error_label.set_text(&error.to_string()); }
             if res.is_ok() {
                 // Refresh List by clearing and re-adding?
                 // Actually, `add_row` appends. We need to replace or refresh fully.

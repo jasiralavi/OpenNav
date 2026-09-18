@@ -27,6 +27,13 @@ pub struct Store {
 }
 
 impl Store {
+    #[cfg(test)]
+    pub(crate) fn in_memory() -> Self {
+        let mut store = Self { conn: Connection::open_in_memory().unwrap() };
+        store.init().unwrap();
+        store
+    }
+
     pub fn new() -> Result<Self> {
         let conn = Connection::open(&*DB_PATH)?;
         let mut store = Store { conn };
@@ -217,7 +224,21 @@ impl Store {
         Ok(engines)
     }
     
-    pub fn add_engine(&self, engine: &SearchEngine) -> Result<()> {
+    fn validate_engine_keyword(&self, original: Option<&str>, keyword: &str) -> anyhow::Result<()> {
+        if keyword.is_empty() || keyword.chars().any(char::is_whitespace) {
+            anyhow::bail!("Search aliases cannot be empty or contain spaces.");
+        }
+        if crate::data::shortcuts::LauncherSettings::load(self)?.reserves(keyword) {
+            anyhow::bail!("This alias is reserved for a browser, Chrome profiles, or bookmarks.");
+        }
+        if self.list_engines()?.iter().any(|e| Some(e.keyword.as_str()) != original && e.keyword.eq_ignore_ascii_case(keyword)) {
+            anyhow::bail!("This search-engine alias is already in use.");
+        }
+        Ok(())
+    }
+
+    pub fn add_engine(&self, engine: &SearchEngine) -> anyhow::Result<()> {
+        self.validate_engine_keyword(None, &engine.keyword)?;
         self.conn.execute(
             "INSERT INTO search_engines (keyword, name, url, icon_path) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(keyword) DO UPDATE SET name=?2, url=?3, icon_path=?4",
@@ -226,7 +247,8 @@ impl Store {
         Ok(())
     }
     
-    pub fn update_engine(&self, original_keyword: &str, engine: &SearchEngine) -> Result<()> {
+    pub fn update_engine(&self, original_keyword: &str, engine: &SearchEngine) -> anyhow::Result<()> {
+        self.validate_engine_keyword(Some(original_keyword), &engine.keyword)?;
         // Transaction to handle key change safely? SQLite allows simple updates.
         // If keyword changed, we might need to handle uniqueness, but let's assume valid.
         
